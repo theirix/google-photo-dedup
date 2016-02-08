@@ -2,6 +2,7 @@
 
 import os
 import re
+import time
 import itertools
 import argparse
 import httplib2
@@ -98,18 +99,40 @@ def group_key(file):
     # createdTime is not reilable because often it is upload time
     #return file.get('createdTime')
     # instead use drive file name. it perfectly matches our needs
-    name = file.get('name')
-    # normalize name
-    match = re.match(r"IMG_(\d{8})_(\d{6})(.*)", name)
-    if match:
-        m1, m2, m3 = match.groups()
-        name = "{}-{}-{} {}.{}.{}{}".format(m1[0:4], m1[4:6], m1[6:8],
-                                            m2[0:2], m2[2:4], m2[4:6], m3)
-    return name
+    return file.get('name')
 
 def with_camera_model(file):
     """ :return: if camera model is present """
     return file.get('cameraModel') != None and file.get('cameraModel') != ''
+
+def process_group(prefered, duplicates, service, flags):
+    ever_deleted = False
+
+    # Print data
+    print("  Prefer: {}".format(pretty_inspect(prefered)))
+    if flags.verbose:
+        print("  JSON: " + repr(prefered))
+    for file in duplicates:
+        print("  Delete: {}".format(pretty_inspect(file)))
+        if flags.verbose:
+            print("  JSON: " + repr(file))
+
+    # Sanity checks
+    if not with_camera_model(prefered) and any(with_camera_model(f) for f in duplicates):
+        print("Ignore removing duplicates where camera model is set")
+        return False
+    if int(prefered.get('size')) < min(int(f.get('size')) for f in duplicates):
+        print("Ignore removing duplicates larger then prefered")
+        return False
+
+    # Delete duplicates
+    for file in duplicates:
+        if flags.delete:
+            service.files().update(fileId=file.get('id'), body={'trashed': True}).execute()
+            ever_deleted = True
+
+    return ever_deleted
+
 
 def main():
     """
@@ -126,8 +149,14 @@ the same resolution.
     # httplib2.debuglevel = 4
 
     parser = argparse.ArgumentParser(parents=[tools.argparser])
-    parser.add_argument('--verbose', '-v', action='store_true')
-    parser.add_argument('--delete', '-d', action='store_true')
+    parser.add_argument('--verbose', '-v', action='store_true',
+                        help='explain what is going on')
+    parser.add_argument('--delete', '-d', action='store_true',
+                        help='actually delete things')
+    parser.add_argument('--renamed', '-m', action='store_true',
+                        help='enable mode with fuzzy renamed search')
+    parser.add_argument('--query', '-q',
+                        help='additional API query')
     flags = parser.parse_args()
 
     credentials = get_credentials(flags)
@@ -137,10 +166,17 @@ the same resolution.
     query = "mimeType='image/jpeg' and trashed=false"
     # query += " and createdTime >= '2016-01-02'"
     # query += " and name contains '2016-01-02'"
+    # query += " and name contains '2012-05-21'"
+    # query += " and (name contains '20120513_' or name contains '2012_05_13')"
+    if flags.query and len(flags.query) > 0:
+        query += " " + flags.query
 
     files_list = []
     page_token = None
     page_index = 0
+
+    if flags.delete:
+        print("DELETE mode")
 
     print("Fetching metadata ", end="")
     while True:
@@ -169,7 +205,10 @@ the same resolution.
         for file in files_list:
             print(repr(file), "\n")
 
+    files_list = list(f for f in files_list if f.get('ownedByMe'))
+
     # Filter photos
+    print("Stage 1: searching for duplicates by name groups")
     duplicates_groups = list([k, list(v)]
                              for k, v in itertools.groupby(
                                  sorted(
@@ -184,33 +223,36 @@ the same resolution.
     print("Found duplicate groups: {}".format(len(duplicates_groups)))
 
     # Iterate duplicate groups
+    ever_deleted = False
     for key, duplicates in duplicates_groups:
         print(
             "\nProcessing duplicates for createdTime {} - {} photo(s)".format(
                 key, len(duplicates)))
         prefered = duplicates.pop()
+        if process_group(prefered, duplicates, service, flags):
+            ever_deleted = True
 
-        # Print data
-        print("  Prefer: {}".format(pretty_inspect(prefered)))
-        if flags.verbose:
-            print("  JSON: " + repr(prefered))
-        for file in duplicates:
-            print("  Delete: {}".format(pretty_inspect(file)))
-            if flags.verbose:
-                print("  JSON: " + repr(file))
+    # Iterate by small time steps
+    if not ever_deleted and flags.renamed:
+        print("Stage 2: searching for duplicates by fuzzy name search")
+        for file in files_list:
+            name = file.get('name')
+            match = re.match(r"^(\d{4})-(\d{2})-(\d{2}) (\d{2})\.(\d{2})\.(\d{2})(.*)", name)
+            if match:
+                m = match.groups()
+                name_time = time.mktime((int(m[0]), int(m[1]), int(m[2]),
+                                         int(m[3]), int(m[4]), int(m[5]), 0, 0, 0))
+                for delta in [-1, 0, +1]:
+                    duplicate_name = time.strftime("IMG_%Y%m%d_%H%M%S",
+                                                   time.localtime(name_time+delta)) + m[6]
+                    duplicates = list(dfile for dfile in files_list if
+                                      dfile.get('name') == duplicate_name and
+                                      image_resolution(dfile) < image_resolution(file))
+                    if len(duplicates) > 0:
+                        print("\nProcessing duplicates for name {} and time delta={}".format(
+                            name, delta))
+                        process_group(file, duplicates, service, flags)
 
-        # Sanity checks
-        if not with_camera_model(prefered) and any(with_camera_model(f) for f in duplicates):
-            print("Ignore removing duplicates where camera model is set")
-            continue
-        if int(prefered.get('size')) < min(int(f.get('size')) for f in duplicates):
-            print("Ignore removing duplicates larger then prefered")
-            continue
-
-        # Delete duplicates
-        for file in duplicates:
-            if flags.delete:
-                service.files().update(fileId=file.get('id'), body={'trashed': True}).execute()
 
     print("Done")
 
