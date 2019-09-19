@@ -7,7 +7,7 @@ import itertools
 import argparse
 import httplib2
 from apiclient import discovery
-import oauth2client
+from oauth2client.file import Storage
 from oauth2client import client
 from oauth2client import tools
 
@@ -52,7 +52,7 @@ def get_credentials(flags):
     credential_path = os.path.join(credential_dir, 'auth-cache.json')
     client_secret_path = os.path.join(credential_dir, 'client_id.json')
 
-    store = oauth2client.file.Storage(credential_path)
+    store = Storage(credential_path)
     credentials = store.get()
     if not credentials or credentials.invalid:
         flow = client.flow_from_clientsecrets(client_secret_path, SCOPES)
