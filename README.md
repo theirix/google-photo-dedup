@@ -18,7 +18,7 @@ Please use carefully and always check what is deleting.
 Python3 and [API Client Library](https://developers.google.com/api-client-library/python/start/installation).
 In short launch:
 
-		pip install --upgrade google-api-python-client
+		pip install --upgrade google-api-python-client oauth2client
 
 Also you need `client_id.json` from the developer console.
 
