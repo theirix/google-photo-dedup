@@ -5,11 +5,11 @@ import re
 import time
 import itertools
 import argparse
-import httplib2
+import pickle
 from apiclient import discovery
-from oauth2client.file import Storage
-from oauth2client import client
-from oauth2client import tools
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+
 
 __author__ = 'theirix'
 __license__ = 'MIT'
@@ -36,7 +36,7 @@ SCOPES = ['https://www.googleapis.com/auth/drive',
 APPLICATION_NAME = 'Google Photo Dedup'
 
 
-def get_credentials(flags):
+def get_credentials():
     """Gets valid user credentials from storage.
 
     If nothing has been stored, or if the stored credentials are invalid,
@@ -45,24 +45,31 @@ def get_credentials(flags):
     Returns:
         Credentials, the obtained credential.
     """
+
     home_dir = os.path.expanduser('~')
     credential_dir = os.path.join(home_dir, '.config', 'google-photo-dedup')
     if not os.path.exists(credential_dir):
         os.makedirs(credential_dir)
-    credential_path = os.path.join(credential_dir, 'auth-cache.json')
+    credential_path = os.path.join(credential_dir, 'token.pickle')
     client_secret_path = os.path.join(credential_dir, 'client_id.json')
+    creds = None
+    if os.path.exists(credential_path):
+        with open(credential_path, 'rb') as token:
+            creds = pickle.load(token)
 
-    store = Storage(credential_path)
-    credentials = store.get()
-    if not credentials or credentials.invalid:
-        flow = client.flow_from_clientsecrets(client_secret_path, SCOPES)
-        flow.user_agent = APPLICATION_NAME
-        if flags:
-            credentials = tools.run_flow(flow, store, flags)
-        else:  # Needed only for compatibility with Python 2.6
-            credentials = tools.run(flow, store)
+    # If there are no (valid) credentials available, let the user log in.
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(client_secret_path, SCOPES)
+            creds = flow.run_local_server()
+        # Save the credentials for the next run
         print('Storing credentials to ' + credential_path)
-    return credentials
+        with open(credential_path, 'wb') as token:
+            pickle.dump(creds, token)
+
+    return creds
 
 
 def pretty_inspect(file):
@@ -148,7 +155,7 @@ the same resolution.
     # logging.getLogger().setLevel(logging.DEBUG)
     # httplib2.debuglevel = 4
 
-    parser = argparse.ArgumentParser(parents=[tools.argparser])
+    parser = argparse.ArgumentParser()
     parser.add_argument('--verbose', '-v', action='store_true',
                         help='explain what is going on')
     parser.add_argument('--delete', '-d', action='store_true',
@@ -159,9 +166,8 @@ the same resolution.
                         help='additional API query')
     flags = parser.parse_args()
 
-    credentials = get_credentials(flags)
-    http = credentials.authorize(httplib2.Http())
-    service = discovery.build('drive', 'v3', http=http)
+    credentials = get_credentials()
+    service = discovery.build('drive', 'v3', credentials=credentials)
 
     query = "mimeType='image/jpeg' and trashed=false"
     # query += " and createdTime >= '2016-01-02'"

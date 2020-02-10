@@ -18,9 +18,10 @@ Please use carefully and always check what is deleting.
 Python3 and [API Client Library](https://developers.google.com/api-client-library/python/start/installation).
 In short launch:
 
-		pip install --upgrade google-api-python-client oauth2client
+		pip install --upgrade google-api-python-client google-auth-httplib2 google-auth-oauthlib 
 
-Also you need `client_id.json` from the developer console.
+Also you need `client_id.json` from the developer console to be placed at 
+`~/.config/google-photo-dedup/client_id.json`
 
 ## Usage
 
