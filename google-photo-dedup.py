@@ -6,7 +6,7 @@ import time
 import itertools
 import argparse
 import pickle
-from apiclient import discovery
+from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 
@@ -167,7 +167,7 @@ the same resolution.
     flags = parser.parse_args()
 
     credentials = get_credentials()
-    service = discovery.build('drive', 'v3', credentials=credentials)
+    service = build('drive', 'v3', credentials=credentials)
 
     query = "mimeType='image/jpeg' and trashed=false"
     # query += " and createdTime >= '2016-01-02'"
