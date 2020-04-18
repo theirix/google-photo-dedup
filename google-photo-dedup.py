@@ -125,11 +125,13 @@ def process_group(prefered, duplicates, service, flags):
             print("  JSON: " + repr(file))
 
     # Sanity checks
+    # Skip deleting if any duplicate has camera info while the prefered item does not
     if not with_camera_model(prefered) and any(with_camera_model(f) for f in duplicates):
         print("Ignore removing duplicates where camera model is set")
         return False
-    if int(prefered.get('size')) < min(int(f.get('size')) for f in duplicates):
-        print("Ignore removing duplicates larger then prefered")
+    # Skip deleting if any duplicate is larger than the prefered item
+    if int(prefered.get('size')) < max(int(f.get('size')) for f in duplicates):
+        print("Ignore removing duplicates larger than prefered")
         return False
 
     # Delete duplicates
