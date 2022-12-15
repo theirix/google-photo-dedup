@@ -30,16 +30,16 @@ Also you need `client_id.json` from the developer console to be placed at
 
 Check duplicates:
 
-		python3 google-photo-dedup.rb
+		python3 google-photo-dedup.py
 
 Remove duplicates:
 
-		python3 google-photo-dedup.rb -d
+		python3 google-photo-dedup.py -d
 
 Additional mode with fuzzy search (for example treat as same files
 `IMG_20121108_144554.jpg` and `2012-11-08 14.45.53.jpg`) with maximum time delta of one second:
 
-		python3 google-photo-dedup.rb -m -d
+		python3 google-photo-dedup.py -m -d
 
 ## Rationale
 
